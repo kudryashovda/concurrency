@@ -8,12 +8,20 @@
 
 using namespace std;
 
-size_t calVectorPartialSum(const vector<size_t> &vec, size_t beg_idx,
-                           size_t end_idx) {
+void calcPartialSum(const vector<size_t> &vec, size_t &result, size_t idx_beg,
+                    size_t idx_end) {
   size_t summ = 0;
-  for (size_t idx = beg_idx; idx < end_idx; ++idx) {
-    summ += vec[idx];
+  for (size_t i = idx_beg; i < idx_end; ++i) {
+    summ += vec[i];
   }
+  result = summ;
+}
+
+size_t calVectorPartialSum(const vector<size_t> &vec, size_t idx_beg,
+                           size_t idx_end) {
+  size_t summ = 0;
+  calcPartialSum(vec, summ, idx_beg, idx_end);
+
   return summ;
 }
 
@@ -21,25 +29,31 @@ size_t calVectorSumSeq(const vector<size_t> &vec) {
   return calVectorPartialSum(vec, 0, vec.size());
 }
 
+size_t calcVectorSumParThread(const vector<size_t> &vec) {
+  const size_t idx_vec_mid = vec.size() / 2;
+  const size_t idx_vec_end = vec.size();
+
+  size_t summ1 = 0;
+  thread t1(calcPartialSum, ref(vec), ref(summ1), 0, idx_vec_mid);
+
+  size_t summ2 = 0;
+  calcPartialSum(ref(vec), summ2, idx_vec_mid, idx_vec_end);
+
+  t1.join();
+
+  return summ1 + summ2;
+}
+
 size_t calVectorSumParAsync(const vector<size_t> &vec) {
-  size_t idx[5];
-  idx[0] = 0;
-  idx[1] = vec.size() / 4;
-  idx[2] = vec.size() / 4 * 2;
-  idx[3] = vec.size() / 4 * 3;
-  idx[4] = vec.size();
+  const size_t idx_vec_mid = vec.size() / 2;
+  const size_t idx_vec_end = vec.size();
 
-  vector<future<size_t>> futures;
-  for (int i = 0; i < 4; ++i) {
-    futures.push_back(async(calVectorPartialSum, ref(vec), idx[i], idx[i + 1]));
-  }
+  auto f1 = async(calVectorPartialSum, ref(vec), 0, idx_vec_mid);
+  const size_t summ2 = calVectorPartialSum(vec, idx_vec_mid, idx_vec_end);
 
-  size_t summ = 0;
-  for (int i = 0; i < 4; ++i) {
-    summ += futures[i].get();
-  }
+  const size_t summ1 = f1.get();
 
-  return summ;
+  return summ1 + summ2;
 }
 
 int main() {
@@ -54,7 +68,11 @@ int main() {
     const size_t summ = calVectorSumSeq(numbers);
     assert(summ == expected_summ);
   }
-
+  {
+    LOG_DURATION("calcVectorSumParThread");
+    const size_t result = calcVectorSumParThread(numbers);
+    assert(result == expected_summ);
+  }
   {
     LOG_DURATION("calVectorSumParAsync");
     const size_t summ = calVectorSumParAsync(numbers);
